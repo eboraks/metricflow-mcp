@@ -1,0 +1,86 @@
+# Headless BI MCP Server - Natural Language to Vega-Lite Chart JSON
+
+## Project Overview
+Build a Headless BI MCP Server that translates natural language queries into SQL queries and Vega-Lite visualization specifications. This is a pure MCP server implementation that can be integrated with any MCP-compatible client.
+
+## Core Features
+
+### MCP Server Implementation
+- MCP server that exposes tools for natural language query processing
+- LLM orchestration for SQL generation and Vega-Lite specification creation
+- Secure database execution with read-only permissions
+- Data source management and configuration through MCP tools
+- Contextual follow-up query support
+- Robust error handling and structured responses
+- Data source CRUD operations through MCP tools
+
+## Technical Requirements
+- Pure MCP server implementation (no REST API)
+- MCP server that can be run locally
+- JSON-RPC 2.0 communication protocol
+- Tools-based architecture following MCP specification
+
+### Security
+- Database credentials must not be exposed in any responses
+- All database connections use read-only users
+- SQL injection prevention measures
+- Secure credential storage and management
+- MCP security best practices implementation
+
+### Performance
+- P95 response time under 5 seconds (excluding database time)
+- Stateless server design for horizontal scaling
+- Efficient NL2SQL processing
+- Optimized MCP tool execution
+
+### Architecture
+- MCP server architecture following specification
+- JSON-RPC 2.0 message format
+- Tool-based functionality exposure
+- Stateful connections with capability negotiation
+
+## MCP Tools to be Exposed
+
+### getDataSources
+- Tool to fetch available data sources
+- Returns list of data source names and IDs
+- No parameters required
+
+### executeQuery
+- Tool to submit natural language queries
+- Accepts natural language query and data source ID
+- Returns structured response with SQL, data, and Vega-Lite spec
+- Supports conversation context for follow-ups
+
+### createDataSource
+- Tool to create new data source configuration
+- Accepts data source configuration parameters
+- Returns confirmation of creation
+
+### updateDataSource
+- Tool to update existing data source configuration
+- Accepts data source ID and updated configuration
+- Returns confirmation of update
+
+### deleteDataSource
+- Tool to remove data source configuration
+- Accepts data source ID
+- Returns confirmation of deletion
+
+## Data Sources
+- Support for multiple pre-configured, trusted data sources
+- Secure credential management
+- Read-only database access
+- Configuration stored securely on server
+
+## Testing Datasets
+- Uber ride analytics data
+- Brazilian e-commerce data
+
+## Success Criteria
+- MCP server can be run locally and connected to by MCP clients
+- Natural language queries are successfully translated to SQL and Vega-Lite specs
+- System handles follow-up queries intelligently
+- Secure and scalable MCP server architecture
+- Robust error handling and user feedback through MCP protocol
+- All tools function correctly and return proper JSON-RPC responses

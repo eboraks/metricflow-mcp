@@ -1,0 +1,116 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize MCP Server Project and Repository",
+        "description": "Set up the project repository with a modern Python environment, initialize version control, and configure the base MCP server structure.",
+        "details": "Use Python 3.11+ for best async support. Initialize a Git repository. Set up a virtual environment using `venv` or `poetry`. Add a `pyproject.toml` for dependency management. Install core dependencies: `fastmcp` (latest), `sqlalchemy` (for DB abstraction), `pydantic` (for schema validation), and `python-dotenv` for environment variable management. Scaffold the project with a `src/` directory and a main entrypoint (e.g., `src/server.py`). Ensure the server can be run locally via `python src/server.py` and communicates via stdio for MCP compatibility[3][5].",
+        "testStrategy": "Verify repository setup, dependency installation, and that the server can be started and responds to MCP Inspector tool listing.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Implement Secure Data Source Management Tools",
+        "description": "Develop MCP tools for CRUD operations on data sources, ensuring secure credential handling and read-only access.",
+        "details": "Implement `getDataSources`, `createDataSource`, `updateDataSource`, and `deleteDataSource` as MCP tools. Store data source configurations in an encrypted local file or use a secrets manager (e.g., `python-keyring` or `cryptography`). Enforce read-only DB users for all connections. Use Pydantic models for input validation. Never expose credentials in responses. Follow MCP tool registration best practices[3][2].",
+        "testStrategy": "Unit test each tool for correct CRUD behavior, credential masking, and error handling. Use MCP Inspector to verify tool registration and responses.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Integrate LLM Orchestration for NL2SQL and Vega-Lite Generation",
+        "description": "Set up LLM orchestration to translate natural language queries into SQL and Vega-Lite JSON specifications.",
+        "details": "Use OpenAI GPT-4o or Claude 3 Opus via their official APIs for NL2SQL and Vega-Lite generation. Implement prompt engineering to guide the LLM to output both SQL and Vega-Lite spec in a structured JSON format. Use system prompts to enforce SQL safety and Vega-Lite compliance. Cache schema introspection results for each data source to provide context to the LLM. Consider using LangChain (v0.1+) for prompt orchestration, but keep the orchestration lightweight to minimize latency. Ensure all LLM calls are stateless and do not leak credentials.",
+        "testStrategy": "Mock LLM responses for unit tests. Validate that generated SQL is syntactically correct and that Vega-Lite specs render sample data. Test with Uber and Brazilian e-commerce datasets.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Develop executeQuery Tool with Contextual Follow-up Support",
+        "description": "Implement the `executeQuery` MCP tool to process NL queries, manage context for follow-ups, and return structured results.",
+        "details": "Accept NL query and data source ID as input. Use LLM orchestration to generate SQL and Vega-Lite spec. Execute SQL securely using SQLAlchemy with parameterized queries to prevent injection. Maintain a short-term context (in-memory or Redis) for follow-up queries, storing recent queries and results per session. Return a JSON-RPC 2.0 response with SQL, data (as JSON), and Vega-Lite spec. Handle errors robustly and return structured error objects per MCP spec.",
+        "testStrategy": "Integration test with multi-turn conversations. Validate SQL injection resistance. Confirm correct context handling and structured responses.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Implement Secure Database Connection and Execution Layer",
+        "description": "Create a secure, stateless database connection layer with read-only access and SQL injection prevention.",
+        "details": "Use SQLAlchemy (v2.x) for DB abstraction. Enforce read-only credentials at the DB level. All queries must use parameterized execution. Store credentials securely (dotenv or OS keyring). Support multiple DB types (Postgres, MySQL, SQLite). Ensure connections are stateless and closed after each operation for scalability. Log all queries and errors securely, omitting sensitive info.",
+        "testStrategy": "Penetration test for SQL injection. Attempt privilege escalation. Validate that only read operations are possible. Unit test connection pooling and error handling.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Implement Robust Error Handling and Structured JSON-RPC Responses",
+        "description": "Ensure all MCP tools return structured, informative error and success responses per JSON-RPC 2.0 and MCP spec.",
+        "details": "Wrap all tool logic in try/except blocks. Map exceptions to JSON-RPC error codes and messages. Include error details (type, message, stack trace if in debug mode). Never leak credentials or sensitive info in errors. Use Pydantic for response schema validation. Log errors securely for auditability.",
+        "testStrategy": "Simulate tool failures, invalid inputs, and DB errors. Verify correct error codes and messages in responses. Fuzz test for edge cases.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Optimize Performance and Stateless Scalability",
+        "description": "Profile and optimize the server for P95 response time under 5 seconds (excluding DB time) and stateless horizontal scaling.",
+        "details": "Use async programming (asyncio, async SQLAlchemy) where possible. Profile LLM and DB latency separately. Cache schema introspection and LLM prompt templates. Ensure server is stateless: no session data stored in process memory (use Redis or similar if needed). Containerize with Docker for easy scaling. Add health checks and readiness probes.",
+        "testStrategy": "Load test with concurrent requests. Measure P95 latency. Validate statelessness by running multiple server instances and simulating failover.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Comprehensive Integration and Security Testing",
+        "description": "Test the full system with real datasets, security audits, and MCP client compatibility.",
+        "details": "Use Uber and Brazilian e-commerce datasets for end-to-end tests. Validate all MCP tools via MCP Inspector and compatible clients. Perform security audits: credential leakage, SQL injection, privilege escalation, and denial of service. Document test cases and results. Ensure compliance with MCP and JSON-RPC 2.0 specs.",
+        "testStrategy": "Automated integration tests, manual penetration testing, and MCP Inspector validation. Review logs for security and correctness.",
+        "priority": "medium",
+        "dependencies": [
+          6,
+          7
+        ],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-09-04T12:42:47.891Z",
+      "updated": "2025-09-04T12:42:47.891Z",
+      "description": "Tasks for master context"
+    }
+  }
+}
