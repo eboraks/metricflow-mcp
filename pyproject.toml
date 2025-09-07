@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "superset_mcp"
+version = "0.1.0"
+description = "An MCP server with Postgres + pgvector"
+authors = ["Naman", "Eliran"]
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastmcp = "*"
+sqlalchemy = "*"
+pydantic = "*"
+python-dotenv = "*"
+psycopg2-binary = "*"   # PostgreSQL driver
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

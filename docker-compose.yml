@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  # PostgreSQL database with pgvector extension
+  db:
+    image: ankane/pgvector:latest
+    container_name: mcp-postgres
+    environment:
+      POSTGRES_USER: mcpuser
+      POSTGRES_PASSWORD: mcppass
+      POSTGRES_DB: mcpdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcpuser -d mcpdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MCP Server
+  server:
+    build: .
+    container_name: mcp-server
+    environment:
+      DATABASE_URL: postgresql+psycopg2://mcpuser:mcppass@db:5432/mcpdb
+    depends_on:
+      db:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./.env:/app/.env:ro  # Mount .env file as read-only
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    driver: local
