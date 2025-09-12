@@ -13,6 +13,9 @@ sqlalchemy = "*"
 pydantic = "*"
 python-dotenv = "*"
 psycopg2-binary = "*"   # PostgreSQL driver
+pandas = "*"            # CSV processing
+alembic = "*"           # Database migrations
+kagglehub = "*"         # Kaggle dataset downloader
 
 [build-system]
 requires = ["poetry-core"]
