@@ -44,16 +44,28 @@ class CSVImporter:
     def create_table_from_csv(self, csv_path: str, table_name: str = "csv_data") -> str:
         """Create a table based on CSV structure and import data"""
         try:
-            # Read CSV to get structure
+            # Read CSV
             df = pd.read_csv(csv_path)
-            
-            # Create table using pandas to_sql
+
+            inspector = inspect(self.engine)
+            table_exists = inspector.has_table(table_name)
+
+            # If table exists, TRUNCATE it to avoid dropping dependencies (e.g., views), then append
+            if table_exists:
+                with self.engine.begin() as conn:
+                    conn.execute(text(f"TRUNCATE TABLE {table_name};"))
+                if_exists_mode = 'append'
+            else:
+                if_exists_mode = 'fail'
+
+            # Load data
             df.to_sql(
                 name=table_name,
                 con=self.engine,
-                if_exists='replace',  # Replace if exists
+                if_exists=if_exists_mode,
                 index=False,
-                method='multi'  # Faster for large datasets
+                method='multi',
+                chunksize=10000
             )
             
             # Get row count

@@ -1,6 +1,7 @@
 import kagglehub
 import os
 import glob
+import shutil
 import logging
 from typing import List, Dict, Optional
 
@@ -26,12 +27,52 @@ class KaggleDownloader:
         try:
             logger.info(f"Downloading dataset: {dataset_name}")
             
-            # Download the dataset
+            # Deterministic local cache path for this dataset
+            safe_name = dataset_name.replace('/', '__')
+            local_dataset_dir = os.path.join(self.download_dir, safe_name)
+            os.makedirs(local_dataset_dir, exist_ok=True)
+
+            # If already cached with CSVs, skip fresh download
+            existing_csvs = self.get_csv_files_from_dataset(local_dataset_dir)
+            if existing_csvs:
+                logger.info(f"Using cached dataset at {local_dataset_dir} ({len(existing_csvs)} CSVs)")
+                files = []
+                for root, _, filenames in os.walk(local_dataset_dir):
+                    for filename in filenames:
+                        file_path = os.path.join(root, filename)
+                        file_size = os.path.getsize(file_path)
+                        files.append({
+                            "name": filename,
+                            "path": file_path,
+                            "size_mb": round(file_size / (1024 * 1024), 2),
+                            "relative_path": os.path.relpath(file_path, local_dataset_dir)
+                        })
+                csv_files = [f for f in files if f["name"].lower().endswith('.csv')]
+                return {
+                    "dataset_name": dataset_name,
+                    "download_path": local_dataset_dir,
+                    "total_files": len(files),
+                    "csv_files": len(csv_files),
+                    "files": files,
+                    "csv_file_paths": [f["path"] for f in csv_files],
+                    "status": "success"
+                }
+
+            # Otherwise, download and copy into cache directory
             path = kagglehub.dataset_download(dataset_name)
-            
-            # Find all files in the downloaded directory
+
+            # Copy all files from KaggleHub temp path to our cache folder
+            for root, _, filenames in os.walk(path):
+                for filename in filenames:
+                    src_path = os.path.join(root, filename)
+                    rel = os.path.relpath(src_path, path)
+                    dst_path = os.path.join(local_dataset_dir, rel)
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
+
+            # Scan cached directory
             files = []
-            for root, dirs, filenames in os.walk(path):
+            for root, _, filenames in os.walk(local_dataset_dir):
                 for filename in filenames:
                     file_path = os.path.join(root, filename)
                     file_size = os.path.getsize(file_path)
@@ -39,23 +80,21 @@ class KaggleDownloader:
                         "name": filename,
                         "path": file_path,
                         "size_mb": round(file_size / (1024 * 1024), 2),
-                        "relative_path": os.path.relpath(file_path, path)
+                        "relative_path": os.path.relpath(file_path, local_dataset_dir)
                     })
-            
-            # Find CSV files specifically
             csv_files = [f for f in files if f["name"].lower().endswith('.csv')]
-            
+
             result = {
                 "dataset_name": dataset_name,
-                "download_path": path,
+                "download_path": local_dataset_dir,
                 "total_files": len(files),
                 "csv_files": len(csv_files),
                 "files": files,
                 "csv_file_paths": [f["path"] for f in csv_files],
                 "status": "success"
             }
-            
-            logger.info(f"Successfully downloaded {len(files)} files, {len(csv_files)} CSV files")
+
+            logger.info(f"Cached {len(files)} files ({len(csv_files)} CSV) to {local_dataset_dir}")
             return result
             
         except Exception as e:
