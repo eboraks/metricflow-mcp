@@ -1,7 +1,9 @@
 import os
+import json
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from flask import request
 
 from vanna.chromadb import ChromaDB_VectorStore
 from vanna.google import GoogleGeminiChat
@@ -34,8 +36,11 @@ def create_vanna_with_pg() -> tuple[MyVanna, str]:
 	# Minimal host fix for local runs
 	database_url = database_url.replace("@db:", "@localhost:")
 
-	gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-pro-latest")
+	gemini_model = os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
+	if gemini_model.endswith("-latest"):
+		gemini_model = gemini_model.replace("-latest", "")
 	print(f"[Vanna Flask] DATABASE_URL= {database_url}")
+	print(f"[Vanna Flask] GEMINI_MODEL= {gemini_model}")
 
 	vn = MyVanna(api_key=gemini_api_key, model=gemini_model)
 
@@ -151,6 +156,105 @@ def create_vanna_with_pg() -> tuple[MyVanna, str]:
 def build_app():
 	vn, _ = create_vanna_with_pg()
 	app = VannaFlaskApp(vn=vn, title="Vanna + Uber", subtitle="Ask questions about Uber bookings")
+
+	# Try to get the underlying Flask app to register routes/handlers
+	flask_app = getattr(app, "app", None) or getattr(app, "_app", None)
+	try:
+		from flask import Flask as _Flask
+		if flask_app is None and isinstance(app, _Flask):
+			flask_app = app
+	except Exception:
+		pass
+
+	# Minimal Vega-Lite endpoint: pass ?sql=... to render a simple bar chart
+	def vega():
+		sql = request.args.get("sql")
+		if not sql:
+			return "Provide SQL via '?sql=...'.", 400
+		try:
+			df = vn.run_sql(sql)
+		except Exception as e:
+			return f"SQL error: {e}", 400
+		if df is None or df.empty:
+			return "No data returned.", 200
+
+		# Limit rows to keep the page responsive
+		df = df.head(1000)
+		cols = list(df.columns)
+		x_field = cols[0]
+		y_field = cols[1] if len(cols) > 1 else cols[0]
+
+		# Decide y encoding: numeric -> quantitative, else aggregate count
+		is_y_numeric = False
+		try:
+			is_y_numeric = pd.api.types.is_numeric_dtype(df[y_field])
+		except Exception:
+			is_y_numeric = False
+
+		values = df.to_dict(orient="records")
+		spec = {
+			"$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+			"data": {"values": values},
+			"mark": "bar",
+			"encoding": {
+				"x": {"field": x_field, "type": "nominal"},
+				"y": (
+					{"field": y_field, "type": "quantitative"}
+					if is_y_numeric
+					else {"aggregate": "count", "type": "quantitative"}
+				)
+			}
+		}
+
+		html = f"""<!doctype html>
+<html>
+<head>
+<meta charset=\"utf-8\">
+<title>Vega-Lite</title>
+<script src=\"https://cdn.jsdelivr.net/npm/vega@5\"></script>
+<script src=\"https://cdn.jsdelivr.net/npm/vega-lite@5\"></script>
+<script src=\"https://cdn.jsdelivr.net/npm/vega-embed@6\"></script>
+<style>
+  body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; }}
+  #vis {{ max-width: 1000px; }}
+  pre {{ white-space: pre-wrap; word-break: break-word; }}
+  a {{ color: #0b5fff; }}
+</style>
+</head>
+<body>
+<h3>Vega-Lite Chart</h3>
+<div style=\"margin-bottom:12px\">SQL: <code>{sql}</code></div>
+<div id=\"vis\"></div>
+<script>
+const spec = {json.dumps(spec, default=str)};
+vegaEmbed('#vis', spec).catch(console.error);
+</script>
+<div style=\"margin-top:16px\"><a href=\"/\">Back to Vanna</a></div>
+</body>
+</html>"""
+		return html
+
+	# Inject an in-page Vega-Lite panel into the main UI without changing templates
+	def _inject_vega_panel(resp):
+		try:
+			ct = resp.headers.get("Content-Type", "")
+			if request.path == "/" and "text/html" in ct:
+				html = resp.get_data(as_text=True)
+				if "VEGA_PANEL_INJECTED" not in html and "</body>" in html:
+					injection = """\n<!-- VEGA_PANEL_INJECTED -->\n<div id=\"vega-lite-panel\" style=\"position:fixed; right:16px; bottom:16px; width:520px; max-width:92vw; height:420px; background:#fff; border:1px solid #e3e3e3; box-shadow:0 6px 24px rgba(0,0,0,0.12); border-radius:8px; z-index:9999; display:flex; flex-direction:column;\">\n  <div style=\"display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid #eee; background:#fafafa; border-top-left-radius:8px; border-top-right-radius:8px;\">\n    <div style=\"font-weight:600; font-size:14px;\">Vega-Lite Chart</div>\n    <button id=\"vega-panel-toggle\" style=\"background:none; border:none; cursor:pointer; font-size:13px; color:#0b5fff;\">Hide</button>\n  </div>\n  <div id=\"vega-panel-body\" style=\"display:flex; flex-direction:column; gap:8px; padding:10px 12px;\">\n    <div style=\"font-size:12px; color:#333;\">Enter SQL to visualize (first column on X, second numeric column on Y; otherwise counts):</div>\n    <textarea id=\"vega-sql\" style=\"width:100%; height:80px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \u0027Liberation Mono\u0027, \u0027Courier New\u0027, monospace; font-size:12px; padding:8px; border:1px solid #ddd; border-radius:6px;\" placeholder=\"SELECT vehicle_type, COUNT(*) AS rides FROM uber_bookings GROUP BY 1 ORDER BY 2 DESC LIMIT 10\"></textarea>\n    <div style=\"display:flex; gap:8px; align-items:center;\">\n      <button id=\"vega-render\" style=\"background:#0b5fff; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:12px;\">Render</button>\n      <span id=\"vega-status\" style=\"font-size:12px; color:#666;\"></span>\n    </div>\n    <iframe id=\"vega-frame\" title=\"Vega-Lite\" style=\"flex:1; width:100%; border:1px solid #eee; border-radius:6px; background:#fff;\"></iframe>\n  </div>\n</div>\n<script>\n(function(){\n  const panel = document.getElementById('vega-lite-panel');\n  const body = document.getElementById('vega-panel-body');\n  const toggle = document.getElementById('vega-panel-toggle');\n  const btn = document.getElementById('vega-render');\n  const ta = document.getElementById('vega-sql');\n  const frame = document.getElementById('vega-frame');\n  const status = document.getElementById('vega-status');\n  if (!panel || !btn || !ta || !frame) return;\n  toggle.addEventListener('click', function(){\n    const isHidden = body.style.display === 'none';\n    body.style.display = isHidden ? 'flex' : 'none';\n    toggle.textContent = isHidden ? 'Hide' : 'Show';\n  });\n  btn.addEventListener('click', function(){\n    const sql = encodeURIComponent(ta.value.trim());\n    if (!sql) { status.textContent = 'Enter SQL to render.'; return; }\n    status.textContent = 'Rendering...';\n    frame.src = '/vega?sql=' + sql;\n    frame.onload = function(){ status.textContent = ''; };\n  });\n})();\n</script>\n"""
+					html = html.replace("</body>", injection + "</body>")
+					resp.set_data(html)
+		except Exception:
+			pass
+		return resp
+
+	# Register handlers if Flask app is available; otherwise skip gracefully
+	if flask_app is not None:
+		try:
+			flask_app.add_url_rule("/vega", "vega", vega)
+			safeguard = flask_app.after_request(_inject_vega_panel)  # registers the hook
+		except Exception:
+			pass
 	return app
 
 
